@@ -1,38 +1,35 @@
-import pyodbc
+import sqlite3
+import os
 from tkinter import messagebox
 
 
 class Database:
     """
-    Lớp này chịu trách nhiệm cho tất cả các tương tác với CSDL SQL Server.
+    Lớp này chịu trách nhiệm cho tất cả các tương tác với CSDL nhưng
+    sử dụng SQLite làm backend local (file-based).
     """
 
-    def __init__(self):
+    def __init__(self, db_path=None):
         """
-        Khởi tạo và cố gắng kết nối CSDL ngay lập tức.
+        Khởi tạo kết nối SQLite. Nếu chưa có file DB, sẽ tạo file và khởi tạo schema
+        mặc định.
         """
         self.connection = None
         try:
-            conn_string = (
-                r"DRIVER={ODBC Driver 17 for SQL Server};"
-                r"SERVER=LAPTOP-2Q4VT418\SQLEXPRESS;"
-                r"DATABASE=QuanLiSinhVien;"
-                r"Trusted_Connection=yes;"
-            )
-            self.connection = pyodbc.connect(conn_string)
-            print("Kết nối CSDL (database.py) thành công!")
-        except pyodbc.Error as ex:
-            sqlstate = ex.args[0]
-            if sqlstate == "IM002":
-                messagebox.showerror(
-                    "Lỗi Driver",
-                    "Không tìm thấy 'ODBC Driver 17 for SQL Server'.\n"
-                    "Hãy tải và cài đặt driver này từ Microsoft.",
-                )
-            else:
-                messagebox.showerror(
-                    "Lỗi Kết Nối CSDL", f"Không thể kết nối.\nLỗi: {ex}"
-                )
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            if db_path is None:
+                db_path = os.path.join(base_dir, "quanli.db")
+            # Kết nối tới SQLite (tạo file nếu chưa tồn tại)
+            self.connection = sqlite3.connect(db_path, check_same_thread=False)
+            # Trả về row dưới dạng tuple (các method hiện tại dùng tuple indexing)
+            self.connection.row_factory = sqlite3.Row
+            # Bật ràng buộc khóa ngoại
+            self.connection.execute("PRAGMA foreign_keys = ON;")
+            print(f"Kết nối SQLite: {db_path}")
+            # Khởi tạo schema nếu cần
+            self.init_db()
+        except sqlite3.Error as ex:
+            messagebox.showerror("Lỗi Kết Nối CSDL", f"Không thể kết nối SQLite.\nLỗi: {ex}")
 
     def check_login(self, username, password):
         """
@@ -52,9 +49,147 @@ class Database:
                 return result[0]  # Trả về MaQuyen
             else:
                 return None
-        except pyodbc.Error as ex:
+        except sqlite3.Error as ex:
             messagebox.showerror("Lỗi Truy Vấn", f"Lỗi khi kiểm tra đăng nhập:\n{ex}")
             return None
+
+    def init_db(self):
+        """
+        Tạo các bảng cơ bản nếu chưa tồn tại. Điều này là tối giản dựa trên các
+        truy vấn được sử dụng trong ứng dụng.
+        """
+        try:
+            cur = self.connection.cursor()
+            # Bảng TaiKhoan
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS TaiKhoan (
+                    TenDangNhap TEXT PRIMARY KEY,
+                    MatKhau TEXT,
+                    MaQuyen TEXT
+                )
+                """
+            )
+            # Bảng Lop
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS Lop (
+                    MaLop TEXT PRIMARY KEY,
+                    TenLop TEXT
+                )
+                """
+            )
+            # SinhVien
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS SinhVien (
+                    MaSV TEXT PRIMARY KEY,
+                    HoTen TEXT,
+                    NgaySinh TEXT,
+                    GioiTinh TEXT,
+                    DiaChi TEXT,
+                    Email TEXT,
+                    MaLop TEXT,
+                    TenDangNhap TEXT,
+                    FOREIGN KEY (MaLop) REFERENCES Lop(MaLop),
+                    FOREIGN KEY (TenDangNhap) REFERENCES TaiKhoan(TenDangNhap)
+                )
+                """
+            )
+            # Khoa
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS Khoa (
+                    MaKhoa TEXT PRIMARY KEY,
+                    TenKhoa TEXT
+                )
+                """
+            )
+            # GiangVien
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS GiangVien (
+                    MaGV TEXT PRIMARY KEY,
+                    HoTenGV TEXT,
+                    Email TEXT,
+                    DienThoai TEXT,
+                    MaKhoa TEXT,
+                    FOREIGN KEY (MaKhoa) REFERENCES Khoa(MaKhoa)
+                )
+                """
+            )
+            # MonHoc
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS MonHoc (
+                    MaMH TEXT PRIMARY KEY,
+                    TenMH TEXT,
+                    SoTinChi INTEGER,
+                    MaKhoa TEXT,
+                    FOREIGN KEY (MaKhoa) REFERENCES Khoa(MaKhoa)
+                )
+                """
+            )
+            # LopHocPhan
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS LopHocPhan (
+                    MaLHP INTEGER PRIMARY KEY AUTOINCREMENT,
+                    TenLHP TEXT,
+                    HocKy INTEGER,
+                    NamHoc INTEGER,
+                    MaMH TEXT,
+                    MaGV TEXT,
+                    FOREIGN KEY (MaMH) REFERENCES MonHoc(MaMH),
+                    FOREIGN KEY (MaGV) REFERENCES GiangVien(MaGV)
+                )
+                """
+            )
+            # LichHoc
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS LichHoc (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    MaLHP INTEGER,
+                    Thu INTEGER,
+                    TietBatDau INTEGER,
+                    SoTiet INTEGER,
+                    PhongHoc TEXT,
+                    FOREIGN KEY (MaLHP) REFERENCES LopHocPhan(MaLHP)
+                )
+                """
+            )
+            # DangKyHoc
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS DangKyHoc (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    MaSV TEXT,
+                    MaLHP INTEGER,
+                    DiemTongKet REAL,
+                    FOREIGN KEY (MaSV) REFERENCES SinhVien(MaSV),
+                    FOREIGN KEY (MaLHP) REFERENCES LopHocPhan(MaLHP)
+                )
+                """
+            )
+            self.connection.commit()
+            # Seed a default admin account if none exists
+            try:
+                cur.execute("SELECT COUNT(1) FROM TaiKhoan WHERE TenDangNhap = ?", ("admin",))
+                exists = cur.fetchone()[0]
+                if not exists:
+                    # Note: storing plaintext password (keep as-is to match original app behavior)
+                    cur.execute(
+                        "INSERT INTO TaiKhoan (TenDangNhap, MatKhau, MaQuyen) VALUES (?, ?, ?)",
+                        ("admin", "admin123", "Admin"),
+                    )
+                    self.connection.commit()
+            except sqlite3.Error:
+                # non-fatal: ignore seeding errors here
+                pass
+            cur.close()
+        except sqlite3.Error as ex:
+            messagebox.showerror("Lỗi Khởi Tạo CSDL", f"Không thể khởi tạo DB: {ex}")
 
     # ===================================================================
     # --- CÁC HÀM CHO SINH VIÊN (TỰ XEM) ---
@@ -73,7 +208,7 @@ class Database:
             result = cursor.fetchone()
             cursor.close()
             return result
-        except pyodbc.Error as ex:
+        except sqlite3.Error as ex:
             messagebox.showerror("Lỗi Truy Vấn", f"Lỗi khi lấy thông tin SV: {ex}")
             return None
 
@@ -90,7 +225,7 @@ class Database:
             self.connection.commit()
             cursor.close()
             return True
-        except pyodbc.Error as ex:
+        except sqlite3.Error as ex:
             messagebox.showerror("Lỗi Cập Nhật", f"Lỗi khi cập nhật thông tin: {ex}")
             return False
 
@@ -118,7 +253,7 @@ class Database:
             results = cursor.fetchall()
             cursor.close()
             return results
-        except pyodbc.Error as ex:
+        except sqlite3.Error as ex:
             messagebox.showerror("Lỗi Truy Vấn", f"Lỗi khi lấy TKB: {ex}")
             return []
 
@@ -143,7 +278,7 @@ class Database:
             results = cursor.fetchall()
             cursor.close()
             return results
-        except pyodbc.Error as ex:
+        except sqlite3.Error as ex:
             messagebox.showerror("Lỗi Truy Vấn", f"Lỗi khi lấy bảng điểm: {ex}")
             return []
 
@@ -170,7 +305,7 @@ class Database:
             results = cursor.fetchall()
             cursor.close()
             return results
-        except pyodbc.Error as ex:
+        except sqlite3.Error as ex:
             messagebox.showerror("Lỗi Truy Vấn", f"Lỗi khi lấy danh sách SV: {ex}")
             return []
 
@@ -187,7 +322,7 @@ class Database:
             results = cursor.fetchall()
             cursor.close()
             return results
-        except pyodbc.Error as ex:
+        except sqlite3.Error as ex:
             messagebox.showerror("Lỗi Truy Vấn", f"Lỗi khi lấy danh sách Lớp: {ex}")
             return []
 
@@ -204,7 +339,7 @@ class Database:
             count = cursor.fetchone()[0]
             cursor.close()
             return count > 0
-        except pyodbc.Error:
+        except sqlite3.Error:
             return None
 
     def add_student(self, sv_data, lop_id):
@@ -228,7 +363,7 @@ class Database:
             cursor.execute(sql_sinhvien, (*sv_data, lop_id, ma_sv))
             self.connection.commit()
             return True
-        except pyodbc.Error as ex:
+        except sqlite3.Error as ex:
             self.connection.rollback()
             messagebox.showerror("Lỗi Thêm Mới", f"Không thể thêm sinh viên: {ex}")
             return False
@@ -264,7 +399,7 @@ class Database:
             self.connection.commit()
             cursor.close()
             return True
-        except pyodbc.Error as ex:
+        except sqlite3.Error as ex:
             messagebox.showerror("Lỗi Cập Nhật", f"Không thể cập nhật sinh viên: {ex}")
             return False
 
@@ -284,7 +419,7 @@ class Database:
             cursor.execute(sql_taikhoan, (student_id,))
             self.connection.commit()
             return True
-        except pyodbc.Error as ex:
+        except sqlite3.Error as ex:
             self.connection.rollback()
             messagebox.showerror("Lỗi Xóa", f"Không thể xóa sinh viên: {ex}")
             return False
@@ -306,7 +441,7 @@ class Database:
             results = cursor.fetchall()
             cursor.close()
             return results
-        except pyodbc.Error as ex:
+        except sqlite3.Error as ex:
             messagebox.showerror("Lỗi Truy Vấn", f"Lỗi khi lấy danh sách Khoa: {ex}")
             return []
 
@@ -326,7 +461,7 @@ class Database:
             results = cursor.fetchall()
             cursor.close()
             return results
-        except pyodbc.Error as ex:
+        except sqlite3.Error as ex:
             messagebox.showerror("Lỗi Truy Vấn", f"Lỗi khi lấy danh sách GV: {ex}")
             return []
 
@@ -341,7 +476,7 @@ class Database:
             count = cursor.fetchone()[0]
             cursor.close()
             return count > 0
-        except pyodbc.Error:
+        except sqlite3.Error:
             return None
 
     def add_teacher(self, gv_data, khoa_id):
@@ -357,7 +492,7 @@ class Database:
             cursor.execute(sql, (*gv_data, khoa_id))
             self.connection.commit()
             return True
-        except pyodbc.Error as ex:
+        except sqlite3.Error as ex:
             self.connection.rollback()
             messagebox.showerror("Lỗi Thêm Mới", f"Không thể thêm giảng viên: {ex}")
             return False
@@ -381,7 +516,7 @@ class Database:
             self.connection.commit()
             cursor.close()
             return True
-        except pyodbc.Error as ex:
+        except sqlite3.Error as ex:
             messagebox.showerror("Lỗi Cập Nhật", f"Không thể cập nhật giảng viên: {ex}")
             return False
 
@@ -405,7 +540,7 @@ class Database:
             cursor.execute(sql_delete, (teacher_id,))
             self.connection.commit()
             return True
-        except pyodbc.Error as ex:
+        except sqlite3.Error as ex:
             self.connection.rollback()
             messagebox.showerror("Lỗi Xóa", f"Không thể xóa giảng viên: {ex}")
             return False
@@ -430,7 +565,7 @@ class Database:
             cursor = self.connection.cursor()
             cursor.execute(sql)
             return cursor.fetchall()
-        except pyodbc.Error as ex:
+        except sqlite3.Error as ex:
             messagebox.showerror("Lỗi Truy Vấn", f"Lỗi khi lấy danh sách Môn học: {ex}")
             return []
 
@@ -445,7 +580,7 @@ class Database:
             count = cursor.fetchone()[0]
             cursor.close()
             return count > 0
-        except pyodbc.Error:
+        except sqlite3.Error:
             return None
 
     def add_monhoc(self, mh_data, khoa_id):
@@ -458,7 +593,7 @@ class Database:
             cursor.execute(sql, (*mh_data, khoa_id))
             self.connection.commit()
             return True
-        except pyodbc.Error as ex:
+        except sqlite3.Error as ex:
             self.connection.rollback()
             messagebox.showerror("Lỗi Thêm Mới", f"Không thể thêm Môn học: {ex}")
             return False
@@ -475,7 +610,7 @@ class Database:
             cursor.execute(sql, (mh_data[1], mh_data[2], khoa_id, mh_data[0]))
             self.connection.commit()
             return True
-        except pyodbc.Error as ex:
+        except sqlite3.Error as ex:
             messagebox.showerror("Lỗi Cập Nhật", f"Không thể cập nhật Môn học: {ex}")
             return False
         finally:
@@ -501,7 +636,7 @@ class Database:
             cursor.execute(sql_delete, (ma_mh,))
             self.connection.commit()
             return True
-        except pyodbc.Error as ex:
+        except sqlite3.Error as ex:
             self.connection.rollback()
             messagebox.showerror("Lỗi Xóa", f"Không thể xóa Môn học: {ex}")
             return False
@@ -523,7 +658,7 @@ class Database:
             cursor = self.connection.cursor()
             cursor.execute(sql)
             return cursor.fetchall()
-        except pyodbc.Error as ex:
+        except sqlite3.Error as ex:
             messagebox.showerror("Lỗi Truy Vấn", f"Lỗi khi lấy danh sách LHP: {ex}")
             return []
 
@@ -536,7 +671,7 @@ class Database:
             cursor = self.connection.cursor()
             cursor.execute(sql)
             return cursor.fetchall()
-        except pyodbc.Error:
+        except sqlite3.Error:
             return []
 
     def get_simple_list_giangvien(self):
@@ -548,7 +683,7 @@ class Database:
             cursor = self.connection.cursor()
             cursor.execute(sql)
             return cursor.fetchall()
-        except pyodbc.Error:
+        except sqlite3.Error:
             return []
 
     def add_lophocphan(self, lhp_data, ma_mh, ma_gv):
@@ -564,7 +699,7 @@ class Database:
             cursor.execute(sql, (*lhp_data, ma_mh, ma_gv))
             self.connection.commit()
             return True
-        except pyodbc.Error as ex:
+        except sqlite3.Error as ex:
             self.connection.rollback()
             messagebox.showerror("Lỗi Thêm Mới", f"Không thể thêm LHP: {ex}")
             return False
@@ -585,7 +720,7 @@ class Database:
             cursor.execute(sql_lhp, (ma_lhp,))
             self.connection.commit()
             return True
-        except pyodbc.Error as ex:
+        except sqlite3.Error as ex:
             self.connection.rollback()
             messagebox.showerror(
                 "Lỗi Xóa", f"Không thể xóa Lớp Học Phần này.\n" f"Lỗi: {ex}"
@@ -616,7 +751,7 @@ class Database:
             cursor = self.connection.cursor()
             cursor.execute(sql, (ma_lhp,))
             return cursor.fetchall()
-        except pyodbc.Error as ex:
+        except sqlite3.Error as ex:
             messagebox.showerror(
                 "Lỗi Truy Vấn", f"Lỗi khi lấy danh sách SV của lớp: {ex}"
             )
@@ -635,7 +770,7 @@ class Database:
             cursor.execute(sql, (diem_to_save, ma_sv, ma_lhp))
             self.connection.commit()
             return True
-        except pyodbc.Error as ex:
+        except sqlite3.Error as ex:
             self.connection.rollback()
             messagebox.showerror("Lỗi Cập Nhật", f"Không thể cập nhật điểm: {ex}")
             return False
