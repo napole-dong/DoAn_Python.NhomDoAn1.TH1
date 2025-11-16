@@ -10,6 +10,7 @@ class AdminStudentManagementFrame(ttk.Frame):
     def __init__(self, parent, controller):
         super().__init__(parent)
         self.controller = controller
+        self.configure(style="App.TFrame")
 
         # Biến để lưu trữ danh sách Lớp (MaLop, TenLop)
         self.lop_list = []
@@ -23,7 +24,7 @@ class AdminStudentManagementFrame(ttk.Frame):
         self.grid_columnconfigure(1, weight=0)  # Form bên phải
 
         # --- Khung bên trái (Hiển thị danh sách) ---
-        left_frame = ttk.Frame(self, padding="10")
+        left_frame = ttk.Frame(self, style="Card.TFrame", padding=10)
         left_frame.grid(row=0, column=0, rowspan=2, sticky="nsew")
         left_frame.grid_rowconfigure(1, weight=1)
         left_frame.grid_columnconfigure(0, weight=1)
@@ -75,7 +76,9 @@ class AdminStudentManagementFrame(ttk.Frame):
         self.tree.bind("<<TreeviewSelect>>", self.on_item_select)
 
         # --- Khung bên phải (Form Thêm/Sửa) ---
-        right_frame = ttk.LabelFrame(self, text="Thông tin chi tiết", padding="10")
+        right_frame = ttk.LabelFrame(
+            self, text="Thông tin chi tiết", padding="10", style="Card.TLabelframe"
+        )
         right_frame.grid(row=0, column=1, padx=10, pady=10, sticky="ns")
 
         # Form fields
@@ -116,7 +119,7 @@ class AdminStudentManagementFrame(ttk.Frame):
         self.combo_lop.grid(row=6, column=1, pady=5)
 
         # --- Khung Nút chức năng (dưới form) ---
-        button_frame = ttk.Frame(self)
+        button_frame = ttk.Frame(self, style="App.TFrame")
         button_frame.grid(row=1, column=1, padx=10, pady=10, sticky="nsew")
 
         btn_add = ttk.Button(button_frame, text="Thêm", command=self.add_student)

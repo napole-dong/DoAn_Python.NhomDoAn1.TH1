@@ -18,6 +18,7 @@ from gui.admin_student_management_frame import AdminStudentManagementFrame
 from gui.admin_teacher_management_frame import AdminTeacherManagementFrame
 from gui.admin_course_management_frame import AdminCourseManagementFrame
 from gui.admin_grading_frame import AdminGradingFrame
+from gui.theme import configure_theme
 
 
 class MainApplication(tk.Tk):
@@ -28,6 +29,9 @@ class MainApplication(tk.Tk):
 
     def __init__(self):
         super().__init__()
+
+        # --- 0. Thiết lập giao diện hiện đại ---
+        configure_theme(self)
 
         # --- 1. Khởi tạo CSDL ---
         self.db = Database()
@@ -120,6 +124,8 @@ class MainApplication(tk.Tk):
         elif frame_name == "AdminMainFrame":
             self.title("Trang Quản trị")
             self.geometry("800x600")
+            if hasattr(frame, "load_data"):
+                frame.load_data()
 
         elif frame_name == "StudentInfoFrame":
             self.title("Thông tin cá nhân")

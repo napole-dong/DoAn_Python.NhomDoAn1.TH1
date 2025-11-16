@@ -3,63 +3,82 @@ from tkinter import ttk
 
 
 class StudentMainFrame(ttk.Frame):
-    """
-    Khung giao diện chính cho Sinh viên.
-    Hiển thị các nút chức năng chính.
-    """
+    """Trang chính cho sinh viên với bố cục thẻ chức năng hiện đại."""
 
     def __init__(self, parent, controller):
         super().__init__(parent)
         self.controller = controller
+        self.configure(style="App.TFrame")
 
-        # Biến này sẽ lưu MaSV của sinh viên đang đăng nhập
         self.student_id = None
-
-        # Biến (StringVar) để tự động cập nhật lời chào
         self.welcome_message = tk.StringVar(value="Chào mừng Sinh viên!")
+        self.tagline_message = tk.StringVar(value="Cùng theo dõi tiến độ học tập của bạn.")
 
-        # --- Cấu hình layout (grid) ---
-        self.grid_columnconfigure(0, weight=1)  # Cho cột 0 co giãn
+        self.grid_rowconfigure(0, weight=1)
+        self.grid_columnconfigure(0, weight=1)
 
-        # --- Tiêu đề ---
-        lbl_title = ttk.Label(
-            self, text="CỔNG THÔNG TIN SINH VIÊN", font=("Arial", 16, "bold")
+        wrapper = ttk.Frame(self, style="App.TFrame", padding=(30, 25))
+        wrapper.grid(row=0, column=0, sticky="nsew")
+        wrapper.grid_columnconfigure(0, weight=1)
+
+        hero = ttk.Frame(wrapper, style="App.TFrame")
+        hero.grid(row=0, column=0, sticky="ew")
+        hero.grid_columnconfigure(1, weight=0)
+
+        ttk.Label(hero, text="Cổng thông tin Sinh viên", style="HeroTitle.TLabel").grid(
+            row=0, column=0, sticky="w"
         )
-        lbl_title.grid(row=0, column=0, pady=20, padx=20)
-
-        # --- Lời chào ---
-        lbl_welcome = ttk.Label(
-            self, textvariable=self.welcome_message, font=("Arial", 12, "italic")
+        ttk.Label(hero, textvariable=self.welcome_message, style="SectionTitle.TLabel").grid(
+            row=1, column=0, sticky="w", pady=(4, 0)
         )
-        lbl_welcome.grid(row=1, column=0, pady=(0, 20), padx=20)
-
-        # --- Các nút chức năng ---
-        # Nút "Cập nhật thông tin"
-        btn_info = ttk.Button(
-            self, text="Cập nhật thông tin cá nhân", command=self.go_to_info_frame
+        ttk.Label(hero, textvariable=self.tagline_message, style="Muted.TLabel").grid(
+            row=2, column=0, sticky="w", pady=(2, 0)
         )
-        btn_info.grid(row=2, column=0, pady=10, padx=50, sticky="ew")
 
-        # Nút "Xem Thời Khóa Biểu"
-        btn_schedule = ttk.Button(
-            self, text="Xem Thời Khóa Biểu", command=self.go_to_schedule_frame
-        )
-        btn_schedule.grid(row=3, column=0, pady=10, padx=50, sticky="ew")
+        ttk.Button(
+            hero,
+            text="Đăng xuất",
+            style="Outline.TButton",
+            command=self.handle_logout,
+        ).grid(row=0, column=1, rowspan=3, padx=(20, 0))
 
-        # --- SỬA ĐỔI Ở ĐÂY ---
-        # Nút "Xem Điểm" (Kích hoạt)
-        btn_grades = ttk.Button(
-            self,
-            text="Xem Điểm",  # Đổi tên text
-            command=self.go_to_grades_frame,  # Thêm command
-            # state="disabled" # Xóa bỏ dòng này
-        )
-        btn_grades.grid(row=4, column=0, pady=10, padx=50, sticky="ew")
-        # --- KẾT THÚC SỬA ĐỔI ---
+        cards_frame = ttk.Frame(wrapper, style="App.TFrame")
+        cards_frame.grid(row=1, column=0, sticky="nsew", pady=(25, 0))
+        for col in range(3):
+            cards_frame.grid_columnconfigure(col, weight=1, uniform="student-cards")
 
-        # --- Nút Đăng xuất ---
-        btn_logout = ttk.Button(self, text="Đăng xuất", command=self.handle_logout)
-        btn_logout.grid(row=5, column=0, pady=30, padx=50, sticky="ew")
+        card_specs = [
+            (
+                "Thông tin cá nhân",
+                "Cập nhật địa chỉ, email và các dữ liệu hồ sơ quan trọng.",
+                self.go_to_info_frame,
+            ),
+            (
+                "Thời khóa biểu",
+                "Xem lịch học từng tuần, giảng viên phụ trách và phòng học.",
+                self.go_to_schedule_frame,
+            ),
+            (
+                "Bảng điểm",
+                "Theo dõi điểm thành phần, tổng kết và số tín chỉ tích lũy.",
+                self.go_to_grades_frame,
+            ),
+        ]
+
+        for idx, (title, desc, callback) in enumerate(card_specs):
+            card = ttk.Frame(cards_frame, style="Card.TFrame", padding=22)
+            card.grid(row=0, column=idx, padx=10, sticky="nsew")
+            ttk.Label(card, text=title, style="SectionTitle.TLabel").pack(anchor="w")
+            ttk.Label(
+                card,
+                text=desc,
+                style="CardMuted.TLabel",
+                wraplength=220,
+                padding=(0, 6, 0, 16),
+            ).pack(anchor="w")
+            ttk.Button(card, text="Truy cập", style="Primary.TButton", command=callback).pack(
+                fill="x"
+            )
 
     def set_student_info(self, student_id):
         """
@@ -75,6 +94,7 @@ class StudentMainFrame(ttk.Frame):
             self.welcome_message.set(f"Chào mừng, {info[0]}!")
         else:
             self.welcome_message.set(f"Chào mừng, {self.student_id}!")
+        self.tagline_message.set(f"Mã sinh viên: {self.student_id}")
 
     def go_to_info_frame(self):
         """Chuyển sang frame Sửa thông tin"""

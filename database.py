@@ -15,7 +15,7 @@ class Database:
         try:
             conn_string = (
                 r"DRIVER={ODBC Driver 17 for SQL Server};"
-                r"SERVER=LAPTOP-2Q4VT418\SQLEXPRESS;"
+                r"SERVER=dyspi\SQLEXPRESS;"
                 r"DATABASE=QuanLiSinhVien;"
                 r"Trusted_Connection=yes;"
             )
@@ -288,6 +288,34 @@ class Database:
             self.connection.rollback()
             messagebox.showerror("Lỗi Xóa", f"Không thể xóa sinh viên: {ex}")
             return False
+        finally:
+            cursor.close()
+
+    def get_dashboard_counts(self):
+        """(Admin) Lấy số liệu tổng quan cho màn hình chính."""
+        if not self.connection:
+            return {}
+
+        queries = {
+            "students": "SELECT COUNT(1) FROM SinhVien",
+            "teachers": "SELECT COUNT(1) FROM GiangVien",
+            "courses": "SELECT COUNT(1) FROM MonHoc",
+            "classes": "SELECT COUNT(1) FROM LopHocPhan",
+        }
+
+        counts = {key: 0 for key in queries}
+        cursor = self.connection.cursor()
+        try:
+            for key, sql in queries.items():
+                cursor.execute(sql)
+                result = cursor.fetchone()
+                counts[key] = result[0] if result else 0
+            return counts
+        except pyodbc.Error as ex:
+            messagebox.showerror(
+                "Lỗi Truy Vấn", f"Không thể lấy số liệu tổng quan: {ex}"
+            )
+            return {}
         finally:
             cursor.close()
 
