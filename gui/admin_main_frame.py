@@ -102,6 +102,11 @@ class AdminMainFrame(ttk.Frame):
                 "Nhập nhanh điểm thành phần và tổng kết theo từng lớp.",
                 self.go_to_grading_frame,
             ),
+            (
+                "Sắp thời khóa biểu",
+                "Quản lý lịch học, phòng học và tránh trùng lịch giảng viên.",
+                self.go_to_schedule_management,
+            ),
         ]
 
         for idx, (title, description, callback) in enumerate(feature_cards):
@@ -145,6 +150,10 @@ class AdminMainFrame(ttk.Frame):
     def go_to_grading_frame(self):  # <-- HÀM MỚI
         """Hàm mới: Chuyển đến frame Nhập điểm"""
         self.controller.show_frame("AdminGradingFrame")
+
+    def go_to_schedule_management(self):
+        """Chuyển đến màn hình sắp xếp thời khóa biểu."""
+        self.controller.show_frame("AdminScheduleManagementFrame")
 
     def handle_logout(self):
         """Xử lý đăng xuất: Quay về màn hình Login"""

@@ -18,6 +18,7 @@ from gui.admin_student_management_frame import AdminStudentManagementFrame
 from gui.admin_teacher_management_frame import AdminTeacherManagementFrame
 from gui.admin_course_management_frame import AdminCourseManagementFrame
 from gui.admin_grading_frame import AdminGradingFrame
+from gui.admin_schedule_management_frame import AdminScheduleManagementFrame
 from gui.theme import configure_theme
 
 
@@ -71,6 +72,7 @@ class MainApplication(tk.Tk):
             AdminTeacherManagementFrame,
             AdminCourseManagementFrame,
             AdminGradingFrame,
+            AdminScheduleManagementFrame,
         ):
             frame_name = F.__name__
             frame = F(parent=container, controller=self)
@@ -165,6 +167,11 @@ class MainApplication(tk.Tk):
             self.title("Nhập điểm")
             self.geometry("900x700")
             frame.load_data()  # Tải danh sách LHP
+
+        elif frame_name == "AdminScheduleManagementFrame":
+            self.title("Sắp xếp thời khóa biểu")
+            self.geometry("1200x720")
+            frame.load_data()
 
         # Đưa frame được yêu cầu lên trên cùng
         frame.tkraise()

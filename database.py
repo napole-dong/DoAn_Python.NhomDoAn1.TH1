@@ -623,6 +623,271 @@ class Database:
             cursor.close()
 
     # ===================================================================
+    # --- CÁC HÀM CHO ADMIN - SẮP XẾP THỜI KHÓA BIỂU ---
+    # ===================================================================
+
+    def get_lophocphan_for_schedule(self):
+        """(Admin) Lấy danh sách LHP kèm thông tin phục vụ sắp lịch."""
+        if not self.connection:
+            return []
+        sql = """
+            SELECT 
+                lhp.MaLHP, lhp.TenLHP, mh.TenMH, gv.HoTenGV, 
+                lhp.HocKy, lhp.NamHoc, lhp.MaGV, lhp.MaMH
+            FROM LopHocPhan AS lhp
+            JOIN MonHoc AS mh ON lhp.MaMH = mh.MaMH
+            JOIN GiangVien AS gv ON lhp.MaGV = gv.MaGV
+            ORDER BY lhp.NamHoc DESC, lhp.HocKy, mh.TenMH
+        """
+        cursor = self.connection.cursor()
+        try:
+            cursor.execute(sql)
+            rows = cursor.fetchall()
+            columns = [
+                "MaLHP",
+                "TenLHP",
+                "TenMH",
+                "HoTenGV",
+                "HocKy",
+                "NamHoc",
+                "MaGV",
+                "MaMH",
+            ]
+            return [dict(zip(columns, row)) for row in rows]
+        except pyodbc.Error as ex:
+            messagebox.showerror(
+                "Lỗi Truy Vấn",
+                f"Không thể lấy danh sách Lớp học phần cho chức năng sắp lịch: {ex}",
+            )
+            return []
+        finally:
+            cursor.close()
+
+    def get_schedule_for_lhp(self, ma_lhp):
+        """Lấy lịch học của một LHP."""
+        if not self.connection:
+            return []
+        sql = """
+            SELECT MaLich, Thu, TietBatDau, SoTiet, PhongHoc
+            FROM LichHoc
+            WHERE MaLHP = ?
+            ORDER BY Thu, TietBatDau
+        """
+        cursor = self.connection.cursor()
+        try:
+            cursor.execute(sql, (ma_lhp,))
+            rows = cursor.fetchall()
+            columns = ["MaLich", "Thu", "TietBatDau", "SoTiet", "PhongHoc"]
+            return [dict(zip(columns, row)) for row in rows]
+        except pyodbc.Error as ex:
+            messagebox.showerror(
+                "Lỗi Truy Vấn", f"Không thể lấy lịch học của lớp {ma_lhp}: {ex}"
+            )
+            return []
+        finally:
+            cursor.close()
+
+    def create_schedule_entry(self, ma_lhp, thu, tiet_bat_dau, so_tiet, phong_hoc):
+        """Thêm lịch học mới sau khi kiểm tra trùng lịch."""
+        if not self.connection:
+            return False, "Mất kết nối CSDL."
+
+        conflict_message = self._check_schedule_conflicts(
+            ma_lhp, thu, tiet_bat_dau, so_tiet, phong_hoc
+        )
+        if conflict_message:
+            return False, conflict_message
+
+        sql = """
+            INSERT INTO LichHoc (MaLHP, Thu, TietBatDau, SoTiet, PhongHoc)
+            VALUES (?, ?, ?, ?, ?)
+        """
+        cursor = self.connection.cursor()
+        try:
+            cursor.execute(sql, (ma_lhp, thu, tiet_bat_dau, so_tiet, phong_hoc))
+            self.connection.commit()
+            return True, "Đã thêm lịch học thành công."
+        except pyodbc.Error as ex:
+            self.connection.rollback()
+            return False, f"Không thể thêm lịch học: {ex}"
+        finally:
+            cursor.close()
+
+    def delete_schedule_entry(self, ma_lich):
+        """Xóa một lịch học cụ thể."""
+        if not self.connection:
+            return False
+        sql = "DELETE FROM LichHoc WHERE MaLich = ?"
+        cursor = self.connection.cursor()
+        try:
+            cursor.execute(sql, (ma_lich,))
+            if cursor.rowcount == 0:
+                return False
+            self.connection.commit()
+            return True
+        except pyodbc.Error as ex:
+            self.connection.rollback()
+            messagebox.showerror("Lỗi Xóa", f"Không thể xóa lịch học: {ex}")
+            return False
+        finally:
+            cursor.close()
+
+    def get_timetable_for_class(self, ma_lop):
+        """Lấy thời khóa biểu tổng hợp của một Lớp sinh viên."""
+        if not self.connection:
+            return []
+        sql = """
+            SELECT DISTINCT
+                lh.MaLich,
+                lh.Thu,
+                lh.TietBatDau,
+                lh.SoTiet,
+                lh.PhongHoc,
+                mh.TenMH,
+                lhp.TenLHP,
+                lhp.MaLHP,
+                gv.HoTenGV
+            FROM SinhVien AS sv
+            JOIN DangKyHoc AS dk ON sv.MaSV = dk.MaSV
+            JOIN LopHocPhan AS lhp ON dk.MaLHP = lhp.MaLHP
+            JOIN MonHoc AS mh ON lhp.MaMH = mh.MaMH
+            JOIN GiangVien AS gv ON lhp.MaGV = gv.MaGV
+            JOIN LichHoc AS lh ON lh.MaLHP = lhp.MaLHP
+            WHERE sv.MaLop = ?
+            ORDER BY lh.Thu, lh.TietBatDau
+        """
+        cursor = self.connection.cursor()
+        try:
+            cursor.execute(sql, (ma_lop,))
+            rows = cursor.fetchall()
+            columns = [
+                "MaLich",
+                "Thu",
+                "TietBatDau",
+                "SoTiet",
+                "PhongHoc",
+                "TenMH",
+                "TenLHP",
+                "MaLHP",
+                "HoTenGV",
+            ]
+            return [dict(zip(columns, row)) for row in rows]
+        except pyodbc.Error as ex:
+            messagebox.showerror(
+                "Lỗi Truy Vấn",
+                f"Không thể lấy thời khóa biểu cho lớp {ma_lop}: {ex}",
+            )
+            return []
+        finally:
+            cursor.close()
+
+    def get_timetable_for_teacher(self, ma_gv):
+        """Lấy thời khóa biểu của một giảng viên."""
+        if not self.connection:
+            return []
+        sql = """
+            SELECT
+                lh.MaLich,
+                lh.Thu,
+                lh.TietBatDau,
+                lh.SoTiet,
+                lh.PhongHoc,
+                mh.TenMH,
+                lhp.TenLHP,
+                lhp.MaLHP,
+                gv.HoTenGV
+            FROM LopHocPhan AS lhp
+            JOIN MonHoc AS mh ON lhp.MaMH = mh.MaMH
+            JOIN GiangVien AS gv ON lhp.MaGV = gv.MaGV
+            JOIN LichHoc AS lh ON lh.MaLHP = lhp.MaLHP
+            WHERE lhp.MaGV = ?
+            ORDER BY lh.Thu, lh.TietBatDau
+        """
+        cursor = self.connection.cursor()
+        try:
+            cursor.execute(sql, (ma_gv,))
+            rows = cursor.fetchall()
+            columns = [
+                "MaLich",
+                "Thu",
+                "TietBatDau",
+                "SoTiet",
+                "PhongHoc",
+                "TenMH",
+                "TenLHP",
+                "MaLHP",
+                "HoTenGV",
+            ]
+            return [dict(zip(columns, row)) for row in rows]
+        except pyodbc.Error as ex:
+            messagebox.showerror(
+                "Lỗi Truy Vấn",
+                f"Không thể lấy thời khóa biểu cho giảng viên {ma_gv}: {ex}",
+            )
+            return []
+        finally:
+            cursor.close()
+
+    def _check_schedule_conflicts(self, ma_lhp, thu, tiet_bat_dau, so_tiet, phong_hoc):
+        """Kiểm tra trùng lịch cho giảng viên, phòng học và sinh viên."""
+        if not self.connection:
+            return "Mất kết nối CSDL."
+
+        new_end = tiet_bat_dau + so_tiet
+        cursor = self.connection.cursor()
+        try:
+            cursor.execute(
+                "SELECT MaGV FROM LopHocPhan WHERE MaLHP = ?",
+                (ma_lhp,),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return "Không tìm thấy Lớp học phần được chọn."
+            ma_gv = row[0]
+
+            teacher_sql = """
+                SELECT COUNT(1)
+                FROM LichHoc AS lh
+                JOIN LopHocPhan AS lhp ON lh.MaLHP = lhp.MaLHP
+                WHERE lhp.MaGV = ?
+                  AND lh.Thu = ?
+                  AND NOT ((lh.TietBatDau + lh.SoTiet) <= ? OR ? <= lh.TietBatDau)
+            """
+            cursor.execute(teacher_sql, (ma_gv, thu, tiet_bat_dau, new_end))
+            if cursor.fetchone()[0] > 0:
+                return "Giảng viên đã có lịch dạy trùng thời gian này."
+
+            room_sql = """
+                SELECT COUNT(1)
+                FROM LichHoc
+                WHERE Thu = ? AND PhongHoc = ?
+                  AND NOT ((TietBatDau + SoTiet) <= ? OR ? <= TietBatDau)
+            """
+            cursor.execute(room_sql, (thu, phong_hoc, tiet_bat_dau, new_end))
+            if cursor.fetchone()[0] > 0:
+                return "Phòng học đang được sử dụng ở khung giờ này."
+
+            student_sql = """
+                SELECT COUNT(1)
+                FROM DangKyHoc AS dk_cur
+                JOIN DangKyHoc AS dk_other ON dk_cur.MaSV = dk_other.MaSV
+                JOIN LichHoc AS lh ON dk_other.MaLHP = lh.MaLHP
+                WHERE dk_cur.MaLHP = ?
+                  AND dk_other.MaLHP <> dk_cur.MaLHP
+                  AND lh.Thu = ?
+                  AND NOT ((lh.TietBatDau + lh.SoTiet) <= ? OR ? <= lh.TietBatDau)
+            """
+            cursor.execute(student_sql, (ma_lhp, thu, tiet_bat_dau, new_end))
+            if cursor.fetchone()[0] > 0:
+                return "Sinh viên của lớp đang học môn khác trong khung giờ này."
+
+            return None
+        except pyodbc.Error as ex:
+            return f"Lỗi kiểm tra trùng lịch: {ex}"
+        finally:
+            cursor.close()
+
+    # ===================================================================
     # --- CÁC HÀM CHO ADMIN - QUẢN LÝ ĐIỂM ---
     # ===================================================================
 

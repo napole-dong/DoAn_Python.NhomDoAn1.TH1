@@ -174,4 +174,25 @@ def configure_theme(root):
     style.configure("TLabel", background=BACKGROUND)
     style.configure("Card.TLabel", background=CARD_BACKGROUND)
 
+    # Sidebar styling for admin schedule module
+    sidebar_bg = "#111827"
+    style.configure(
+        "SidebarHeading.TLabel",
+        background=sidebar_bg,
+        foreground="#f8fafc",
+        font=("Segoe UI", 13, "bold"),
+    )
+    style.configure(
+        "Sidebar.TButton",
+        background="#1f2937",
+        foreground="#f8fafc",
+        padding=(14, 10),
+        bordercolor="#1f2937",
+    )
+    style.map(
+        "Sidebar.TButton",
+        background=[("active", "#374151"), ("pressed", "#0f172a")],
+        foreground=[("disabled", "#94a3b8"), ("!disabled", "#f8fafc")],
+    )
+
     return style
