@@ -69,6 +69,7 @@ class AdminScheduleManagementFrame(ttk.Frame):
         header = ctk.CTkFrame(surface, fg_color="transparent")
         header.grid(row=0, column=0, sticky="ew", padx=16, pady=(16, 8))
         header.grid_columnconfigure(0, weight=1)
+        header.grid_columnconfigure(1, weight=0)
 
         ctk.CTkLabel(
             header,
@@ -82,6 +83,18 @@ class AdminScheduleManagementFrame(ttk.Frame):
             font=ctk.CTkFont(family="Segoe UI", size=13),
             text_color="#475569",
         ).grid(row=1, column=0, sticky="w", pady=(4, 0))
+
+        ctk.CTkButton(
+            header,
+            text="← Quay lại trang Admin",
+            command=self.go_back_to_admin,
+            fg_color="#2563EB",
+            hover_color="#1D4ED8",
+            text_color="white",
+            corner_radius=8,
+            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
+            width=170,
+        ).grid(row=0, column=1, rowspan=2, sticky="e")
 
         content = ctk.CTkFrame(surface, fg_color="transparent")
         content.grid(row=1, column=0, sticky="nsew", padx=16, pady=(0, 16))
@@ -1121,6 +1134,11 @@ class AdminScheduleManagementFrame(ttk.Frame):
     def open_timetable_for_teacher(self):
         self._show_tab("timetable")
         self.combo_gv.focus_set()
+
+    def go_back_to_admin(self):
+        """Return to the main admin dashboard."""
+        if hasattr(self.controller, "show_frame"):
+            self.controller.show_frame("AdminMainFrame")
 
     # ------------------------------------------------------------------
     # TIMETABLE VIEW
