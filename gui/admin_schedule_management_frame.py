@@ -1,6 +1,8 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 
+import customtkinter as ctk
+
 
 class AdminScheduleManagementFrame(ttk.Frame):
     """Màn hình quản trị dùng để sắp thời khóa biểu cho các lớp học phần."""
@@ -16,7 +18,6 @@ class AdminScheduleManagementFrame(ttk.Frame):
         self.student_cache = {}
         self.class_label_to_id = {}
         self.teacher_label_to_id = {}
-        self.sidebar_buttons = {}
         self.lhp_data = []
         self.student_data = []
         self.lhp_search_var = tk.StringVar()
@@ -31,6 +32,7 @@ class AdminScheduleManagementFrame(ttk.Frame):
         self.assignment_lhp_search_var.trace_add(
             "write", lambda *_: self.filter_assignment_lhp_list()
         )
+        self.assignment_lhp_stats_var = tk.StringVar(value="Đang tải lớp học phần...")
         self.assignment_status_var = tk.StringVar(
             value="Chọn sinh viên để cấp thời khóa biểu."
         )
@@ -41,104 +43,113 @@ class AdminScheduleManagementFrame(ttk.Frame):
         self.var_ten_gv = tk.StringVar()
         self.timetable_context_var = tk.StringVar(value="Chưa có dữ liệu được hiển thị.")
 
-        self._build_layout()
+        ctk.set_appearance_mode("light")
+        ctk.set_default_color_theme("blue")
 
-    # ------------------------------------------------------------------
-    # UI BUILDERS
-    # ------------------------------------------------------------------
+        self.tab_font = ctk.CTkFont(family="Segoe UI", size=14, weight="bold")
+        self.timetable_cells = {}
+        self.timetable_canvas = None
+        self.timetable_grid_frame = None
+        self.timetable_grid_window = None
+
+        self._build_layout()
+        self._build_schedule_section()
+        self._build_timetable_section()
+        self._build_assignment_section()
+
     def _build_layout(self):
         self.grid_rowconfigure(0, weight=1)
-        self.grid_columnconfigure(1, weight=1)
+        self.grid_columnconfigure(0, weight=1)
 
-        self._build_sidebar()
+        surface = ctk.CTkFrame(self, corner_radius=0, fg_color="#EAF0FF")
+        surface.grid(row=0, column=0, sticky="nsew")
+        surface.grid_rowconfigure(1, weight=1)
+        surface.grid_columnconfigure(0, weight=1)
 
-        content = ttk.Frame(self, style="App.TFrame", padding=(20, 15))
-        content.grid(row=0, column=1, sticky="nsew")
-        content.grid_rowconfigure(1, weight=1)
-        content.grid_columnconfigure(0, weight=1)
-
-        header = ttk.Frame(content, style="App.TFrame")
-        header.grid(row=0, column=0, sticky="ew", pady=(0, 10))
+        header = ctk.CTkFrame(surface, fg_color="transparent")
+        header.grid(row=0, column=0, sticky="ew", padx=16, pady=(16, 8))
         header.grid_columnconfigure(0, weight=1)
 
-        ttk.Label(
+        ctk.CTkLabel(
             header,
             text="Sắp xếp thời khóa biểu",
-            style="HeroTitle.TLabel",
+            font=ctk.CTkFont(family="Segoe UI", size=20, weight="bold"),
+            text_color="#0F172A",
         ).grid(row=0, column=0, sticky="w")
-        ttk.Label(
+        ctk.CTkLabel(
             header,
             text="Quản lý lịch học chi tiết cho từng lớp học phần",
-            style="Muted.TLabel",
-        ).grid(row=1, column=0, sticky="w")
+            font=ctk.CTkFont(family="Segoe UI", size=13),
+            text_color="#475569",
+        ).grid(row=1, column=0, sticky="w", pady=(4, 0))
 
-        self.main_notebook = ttk.Notebook(content)
-        self.main_notebook.grid(row=1, column=0, sticky="nsew")
+        content = ctk.CTkFrame(surface, fg_color="transparent")
+        content.grid(row=1, column=0, sticky="nsew", padx=16, pady=(0, 16))
+        content.grid_rowconfigure(0, weight=1)
+        content.grid_columnconfigure(0, weight=1)
 
-        self.schedule_tab = ttk.Frame(self.main_notebook, style="App.TFrame", padding=10)
-        self.timetable_tab = ttk.Frame(self.main_notebook, style="App.TFrame", padding=10)
-        self.assignment_tab = ttk.Frame(self.main_notebook, style="App.TFrame", padding=10)
+        self.navigation_tabs = ctk.CTkTabview(
+            content,
+            corner_radius=12,
+            border_width=0,
+            fg_color="#FFFFFF",
+            segmented_button_fg_color="#D7E6FF",
+            segmented_button_selected_color="#3A86FF",
+            segmented_button_unselected_color="#B7C8E8",
+            segmented_button_selected_hover_color="#5BA1FF",
+            segmented_button_unselected_hover_color="#D7E6FF",
+        )
+        self.navigation_tabs.grid(row=0, column=0, sticky="nsew")
+        self.navigation_tabs._segmented_button.configure(font=self.tab_font)
 
-        self.main_notebook.add(self.schedule_tab, text="Sắp lịch học")
-        self.main_notebook.add(self.timetable_tab, text="Xem thời khóa biểu")
-        self.main_notebook.add(self.assignment_tab, text="Cấp TKB cho SV")
+        self.navigation_tabs.add("Lịch học")
+        self.navigation_tabs.add("Thời khóa biểu")
+        self.navigation_tabs.add("Phân công sinh viên")
 
-        self._build_schedule_tab()
-        self._build_timetable_tab()
-        self._build_assignment_tab()
+        self.schedule_section = self.navigation_tabs.tab("Lịch học")
+        self.timetable_section = self.navigation_tabs.tab("Thời khóa biểu")
+        self.assignment_section = self.navigation_tabs.tab("Phân công sinh viên")
 
-    def _build_sidebar(self):
-        sidebar_bg = "#111827"
-        sidebar = tk.Frame(self, bg=sidebar_bg, width=220)
-        sidebar.grid(row=0, column=0, sticky="ns")
-        sidebar.grid_propagate(False)
+        for tab in (self.schedule_section, self.timetable_section, self.assignment_section):
+            tab.grid_rowconfigure(0, weight=1)
+            tab.grid_columnconfigure(0, weight=1)
 
-        ttk.Label(
-            sidebar,
-            text="Điều hướng",
-            style="SidebarHeading.TLabel",
-            anchor="w",
-        ).pack(fill="x", padx=18, pady=(20, 10))
+        self.tab_refs = {
+            "schedule": "Lịch học",
+            "timetable": "Thời khóa biểu",
+            "assignment": "Phân công sinh viên",
+        }
 
-        nav_items = [
-            ("Danh sách lớp học phần", self.focus_lhp_list),
-            ("Sắp lịch học", self.focus_schedule_form),
-            ("Xem TKB theo lớp", self.open_timetable_for_class),
-            ("Xem TKB theo giảng viên", self.open_timetable_for_teacher),
-        ]
+    def _show_tab(self, tab_key):
+        """Switch notebook to requested section to avoid stacked layouts."""
+        if not hasattr(self, "navigation_tabs"):
+            return
+        tab_label = getattr(self, "tab_refs", {}).get(tab_key)
+        if tab_label:
+            self.navigation_tabs.set(tab_label)
 
-        for text, command in nav_items:
-            btn = ttk.Button(sidebar, text=text, style="Sidebar.TButton", command=command)
-            btn.pack(fill="x", padx=18, pady=6)
-            self.sidebar_buttons[text] = btn
-
-        ttk.Button(
-            sidebar,
-            text="Quay lại Trang Admin",
-            style="Accent.TButton",
-            command=lambda: self.controller.show_frame("AdminMainFrame"),
-        ).pack(fill="x", padx=18, pady=(30, 10))
-
-    def _build_schedule_tab(self):
-        self.schedule_tab.grid_rowconfigure(1, weight=1)
-        self.schedule_tab.grid_columnconfigure(0, weight=1)
+    def _build_schedule_section(self):
+        self.schedule_section.grid_rowconfigure(1, weight=1)
+        self.schedule_section.grid_columnconfigure(0, weight=1)
 
         intro = ttk.Label(
-            self.schedule_tab,
+            self.schedule_section,
             text="1. Chọn lớp học phần → 2. Cài đặt lịch → 3. Theo dõi lịch đã tạo",
             style="Muted.TLabel",
         )
         intro.grid(row=0, column=0, sticky="w", pady=(0, 8), padx=5)
 
-        body = ttk.Frame(self.schedule_tab, style="App.TFrame")
+        # body gồm 2 panel: danh sách LHP (trái) và form sắp lịch (phải)
+        body = ttk.Frame(self.schedule_section, style="App.TFrame")
         body.grid(row=1, column=0, sticky="nsew")
-        body.grid_columnconfigure(0, weight=2)
-        body.grid_columnconfigure(1, weight=1)
+        # LHP rộng hơn để đọc thông tin, form gọn lại
+        body.grid_columnconfigure(0, weight=3)
+        body.grid_columnconfigure(1, weight=2)
         body.grid_rowconfigure(0, weight=1)
 
         # Panel B: Danh sách LHP
-        classes_card = ttk.Frame(body, style="Card.TFrame", padding=15)
-        classes_card.grid(row=0, column=0, sticky="nsew", padx=(0, 12))
+        classes_card = ttk.Frame(body, style="Card.TFrame", padding=12)
+        classes_card.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
         classes_card.grid_rowconfigure(3, weight=1)
 
         ttk.Label(classes_card, text="Danh sách Lớp học phần", style="SectionTitle.TLabel").grid(
@@ -187,13 +198,17 @@ class AdminScheduleManagementFrame(ttk.Frame):
         self.lhp_tree.column("NamHoc", anchor="center")
 
         lhp_scroll = ttk.Scrollbar(classes_card, orient="vertical", command=self.lhp_tree.yview)
-        self.lhp_tree.configure(yscrollcommand=lhp_scroll.set)
+        lhp_scroll_x = ttk.Scrollbar(
+            classes_card, orient="horizontal", command=self.lhp_tree.xview
+        )
+        self.lhp_tree.configure(yscrollcommand=lhp_scroll.set, xscrollcommand=lhp_scroll_x.set)
         self.lhp_tree.grid(row=3, column=0, sticky="nsew", pady=(10, 0))
         lhp_scroll.grid(row=3, column=1, sticky="ns", pady=(10, 0))
+        lhp_scroll_x.grid(row=4, column=0, sticky="ew", pady=(4, 0))
         self.lhp_tree.bind("<<TreeviewSelect>>", self.on_lhp_select)
 
         # Panel C: Form sắp lịch
-        form_card = ttk.Frame(body, style="Card.TFrame", padding=15)
+        form_card = ttk.Frame(body, style="Card.TFrame", padding=12)
         form_card.grid(row=0, column=1, sticky="nsew")
         form_card.grid_columnconfigure(0, weight=1)
         form_card.grid_columnconfigure(1, weight=1)
@@ -226,7 +241,7 @@ class AdminScheduleManagementFrame(ttk.Frame):
             row=5, column=0, columnspan=2, sticky="ew", pady=12
         )
 
-        ttk.Label(form_card, text="Thứ (2-7):").grid(row=6, column=0, sticky="w", pady=4)
+        ttk.Label(form_card, text="Thứ (2-7):").grid(row=6, column=0, sticky="w", pady=(4, 2))
         self.combo_thu = ttk.Combobox(
             form_card,
             state="readonly",
@@ -234,7 +249,7 @@ class AdminScheduleManagementFrame(ttk.Frame):
         )
         self.combo_thu.grid(row=6, column=1, sticky="ew", pady=4)
 
-        ttk.Label(form_card, text="Tiết bắt đầu (1-10):").grid(row=7, column=0, sticky="w", pady=4)
+        ttk.Label(form_card, text="Tiết bắt đầu (1-10):").grid(row=7, column=0, sticky="w", pady=(2, 2))
         self.combo_tiet = ttk.Combobox(
             form_card,
             state="readonly",
@@ -242,17 +257,17 @@ class AdminScheduleManagementFrame(ttk.Frame):
         )
         self.combo_tiet.grid(row=7, column=1, sticky="ew", pady=4)
 
-        ttk.Label(form_card, text="Số tiết:").grid(row=8, column=0, sticky="w", pady=4)
+        ttk.Label(form_card, text="Số tiết:").grid(row=8, column=0, sticky="w", pady=(2, 2))
         self.spin_so_tiet = ttk.Spinbox(form_card, from_=1, to=10)
         self.spin_so_tiet.grid(row=8, column=1, sticky="ew", pady=4)
         self.spin_so_tiet.set("1")
 
-        ttk.Label(form_card, text="Phòng học:").grid(row=9, column=0, sticky="w", pady=4)
+        ttk.Label(form_card, text="Phòng học:").grid(row=9, column=0, sticky="w", pady=(2, 2))
         self.entry_phong = ttk.Entry(form_card)
         self.entry_phong.grid(row=9, column=1, sticky="ew", pady=4)
 
         btn_frame = ttk.Frame(form_card, style="Card.TFrame")
-        btn_frame.grid(row=10, column=0, columnspan=2, sticky="ew", pady=(10, 5))
+        btn_frame.grid(row=10, column=0, columnspan=2, sticky="ew", pady=(8, 4))
         btn_frame.grid_columnconfigure(0, weight=1)
         btn_frame.grid_columnconfigure(1, weight=1)
         btn_frame.grid_columnconfigure(2, weight=1)
@@ -285,7 +300,7 @@ class AdminScheduleManagementFrame(ttk.Frame):
             form_card,
             columns=schedule_cols,
             show="headings",
-            height=8,
+            height=7,
         )
         for col, heading, width in [
             ("MaLich", "Mã lịch", 70),
@@ -302,92 +317,220 @@ class AdminScheduleManagementFrame(ttk.Frame):
         schedule_scroll = ttk.Scrollbar(
             form_card, orient="vertical", command=self.schedule_tree.yview
         )
-        self.schedule_tree.configure(yscrollcommand=schedule_scroll.set)
+        schedule_scroll_x = ttk.Scrollbar(
+            form_card, orient="horizontal", command=self.schedule_tree.xview
+        )
+        self.schedule_tree.configure(
+            yscrollcommand=schedule_scroll.set, xscrollcommand=schedule_scroll_x.set
+        )
         self.schedule_tree.grid(row=12, column=0, columnspan=2, sticky="nsew")
         schedule_scroll.grid(row=12, column=2, sticky="ns")
+        schedule_scroll_x.grid(row=13, column=0, columnspan=2, sticky="ew", pady=(4, 0))
 
         form_card.grid_rowconfigure(12, weight=1)
 
-    def _build_timetable_tab(self):
-        self.timetable_tab.grid_rowconfigure(1, weight=1)
-        self.timetable_tab.grid_columnconfigure(0, weight=1)
+    def _build_timetable_section(self):
+        self.timetable_section.grid_rowconfigure(2, weight=1)
+        self.timetable_section.grid_columnconfigure(0, weight=1)
 
-        filter_card = ttk.Frame(self.timetable_tab, style="Card.TFrame", padding=15)
-        filter_card.grid(row=0, column=0, sticky="ew", pady=(0, 10))
+        filter_card = ctk.CTkFrame(
+            self.timetable_section,
+            corner_radius=12,
+            fg_color="#FFFFFF",
+        )
+        filter_card.grid(row=0, column=0, sticky="ew", pady=(0, 12), padx=4)
         filter_card.grid_columnconfigure(1, weight=1)
         filter_card.grid_columnconfigure(3, weight=1)
 
-        ttk.Label(filter_card, text="Bộ lọc thời khóa biểu", style="SectionTitle.TLabel").grid(
-            row=0, column=0, columnspan=4, sticky="w"
-        )
-
-        ttk.Label(filter_card, text="Chọn lớp:").grid(row=1, column=0, sticky="w", pady=(12, 4))
-        self.combo_lop = ttk.Combobox(filter_card, state="readonly", width=35)
-        self.combo_lop.grid(row=1, column=1, sticky="ew", padx=(10, 20), pady=(12, 4))
-
-        ttk.Label(filter_card, text="Chọn giảng viên:").grid(row=1, column=2, sticky="w", pady=(12, 4))
-        self.combo_gv = ttk.Combobox(filter_card, state="readonly", width=35)
-        self.combo_gv.grid(row=1, column=3, sticky="ew", pady=(12, 4))
-
-        ttk.Button(
+        ctk.CTkLabel(
             filter_card,
-            text="Hiển thị",
-            style="Primary.TButton",
+            text="Bộ lọc thời khóa biểu",
+            font=ctk.CTkFont(family="Segoe UI", size=16, weight="bold"),
+            text_color="#0F172A",
+        ).grid(row=0, column=0, columnspan=4, sticky="w", pady=(12, 4), padx=16)
+
+        label_font = ctk.CTkFont(family="Segoe UI", size=13)
+        combo_font = ctk.CTkFont(family="Segoe UI", size=13)
+
+        ctk.CTkLabel(
+            filter_card,
+            text="Chọn lớp",
+            font=label_font,
+            text_color="#334155",
+        ).grid(row=1, column=0, sticky="w", padx=16, pady=(8, 4))
+        self.combo_lop = ctk.CTkComboBox(
+            filter_card,
+            state="readonly",
+            width=220,
+            font=combo_font,
+            corner_radius=8,
+        )
+        self.combo_lop.grid(row=1, column=1, sticky="ew", padx=(8, 16), pady=(8, 4))
+
+        ctk.CTkLabel(
+            filter_card,
+            text="Chọn giảng viên",
+            font=label_font,
+            text_color="#334155",
+        ).grid(row=1, column=2, sticky="w", padx=16, pady=(8, 4))
+        self.combo_gv = ctk.CTkComboBox(
+            filter_card,
+            state="readonly",
+            width=220,
+            font=combo_font,
+            corner_radius=8,
+        )
+        self.combo_gv.grid(row=1, column=3, sticky="ew", padx=(8, 16), pady=(8, 4))
+
+        ctk.CTkButton(
+            filter_card,
+            text="HIỂN THỊ",
             command=self.show_timetable,
-        ).grid(row=2, column=3, sticky="e", pady=(10, 0))
+            fg_color="#3A86FF",
+            hover_color="#2F6BCD",
+            font=ctk.CTkFont(family="Segoe UI", size=14, weight="bold"),
+            corner_radius=8,
+            height=36,
+        ).grid(row=2, column=3, sticky="e", padx=(8, 16), pady=(8, 16))
 
-        ttk.Label(
-            self.timetable_tab,
+        ctk.CTkLabel(
+            self.timetable_section,
             textvariable=self.timetable_context_var,
-            style="Muted.TLabel",
-        ).grid(row=1, column=0, sticky="w", pady=(0, 6), padx=5)
+            font=ctk.CTkFont(family="Segoe UI", size=12),
+            text_color="#94A3B8",
+        ).grid(row=1, column=0, sticky="w", padx=8, pady=(0, 6))
 
-        grid_card = ttk.Frame(self.timetable_tab, style="Card.TFrame", padding=15)
-        grid_card.grid(row=2, column=0, sticky="nsew")
+        grid_card = ctk.CTkFrame(
+            self.timetable_section,
+            corner_radius=12,
+            fg_color="#FFFFFF",
+        )
+        grid_card.grid(row=2, column=0, sticky="nsew", padx=4)
         grid_card.grid_rowconfigure(0, weight=1)
         grid_card.grid_columnconfigure(0, weight=1)
 
-        columns = ("Tiet", "Thu2", "Thu3", "Thu4", "Thu5", "Thu6", "Thu7")
-        self.timetable_tree = ttk.Treeview(
+        self.timetable_canvas = tk.Canvas(
             grid_card,
-            columns=columns,
-            show="headings",
-            height=10,
+            highlightthickness=0,
+            bd=0,
+            bg="#EEF3FF",
         )
-        headings = [
-            ("Tiet", "Tiết"),
-            ("Thu2", "Thứ 2"),
-            ("Thu3", "Thứ 3"),
-            ("Thu4", "Thứ 4"),
-            ("Thu5", "Thứ 5"),
-            ("Thu6", "Thứ 6"),
-            ("Thu7", "Thứ 7"),
-        ]
-        for col, heading in headings:
-            self.timetable_tree.heading(col, text=heading)
-            anchor = "center" if col == "Tiet" else "w"
-            width = 70 if col == "Tiet" else 180
-            self.timetable_tree.column(col, width=width, anchor=anchor)
+        self.timetable_canvas.grid(row=0, column=0, sticky="nsew")
 
-        timetable_scroll = ttk.Scrollbar(
-            grid_card, orient="vertical", command=self.timetable_tree.yview
+        self.timetable_grid_frame = ctk.CTkFrame(
+            self.timetable_canvas,
+            fg_color="#FFFFFF",
+            corner_radius=0,
         )
-        self.timetable_tree.configure(yscrollcommand=timetable_scroll.set)
-        self.timetable_tree.grid(row=0, column=0, sticky="nsew")
-        timetable_scroll.grid(row=0, column=1, sticky="ns")
+        self.timetable_grid_window = self.timetable_canvas.create_window(
+            (0, 0), window=self.timetable_grid_frame, anchor="nw"
+        )
 
-    def _build_assignment_tab(self):
-        self.assignment_tab.grid_rowconfigure(0, weight=1)
-        self.assignment_tab.grid_columnconfigure(0, weight=1)
+        self.timetable_grid_frame.bind(
+            "<Configure>",
+            lambda event: self.timetable_canvas.configure(
+                scrollregion=self.timetable_canvas.bbox("all")
+            ),
+        )
+        self.timetable_canvas.bind("<Configure>", self._stretch_timetable_grid)
 
-        wrapper = ttk.Frame(self.assignment_tab, style="App.TFrame")
+        scroll_y = ctk.CTkScrollbar(
+            grid_card, orientation="vertical", command=self.timetable_canvas.yview
+        )
+        scroll_y.grid(row=0, column=1, sticky="ns")
+        scroll_x = ctk.CTkScrollbar(
+            grid_card, orientation="horizontal", command=self.timetable_canvas.xview
+        )
+        scroll_x.grid(row=1, column=0, sticky="ew")
+        self.timetable_canvas.configure(yscrollcommand=scroll_y.set, xscrollcommand=scroll_x.set)
+
+        self._build_timetable_grid_cells()
+
+    def _build_timetable_grid_cells(self):
+        if not self.timetable_grid_frame:
+            return
+
+        headers = ["Tiết"] + [f"Thứ {day}" for day in range(2, 8)]
+        header_font = ctk.CTkFont(family="Segoe UI", size=13, weight="bold")
+        cell_font = ctk.CTkFont(family="Segoe UI", size=12)
+
+        for col, text in enumerate(headers):
+            label = ctk.CTkLabel(
+                self.timetable_grid_frame,
+                text=text,
+                font=header_font,
+                text_color="#1E293B",
+                fg_color="#EDF2FF",
+                corner_radius=6,
+                height=34,
+            )
+            label.grid(row=0, column=col, sticky="nsew", padx=4, pady=4)
+            weight = 0 if col == 0 else 1
+            min_width = 90 if col == 0 else 150
+            self.timetable_grid_frame.grid_columnconfigure(col, weight=weight, minsize=min_width)
+
+        for period in range(1, 11):
+            period_label = ctk.CTkLabel(
+                self.timetable_grid_frame,
+                text=f"Tiết {period}",
+                font=cell_font,
+                text_color="#1F2937",
+                fg_color="#F3F6FF",
+                corner_radius=6,
+                height=40,
+                justify="center",
+            )
+            period_label.grid(row=period, column=0, sticky="nsew", padx=4, pady=2)
+
+            for day_index, day in enumerate(range(2, 8), start=1):
+                cell_frame = tk.Frame(
+                    self.timetable_grid_frame,
+                    bg="#D4DDEC",
+                    bd=0,
+                    highlightthickness=0,
+                    padx=1,
+                    pady=1,
+                )
+                cell_frame.grid(row=period, column=day_index, sticky="nsew", padx=4, pady=2)
+                cell = ctk.CTkLabel(
+                    cell_frame,
+                    text="",
+                    justify="left",
+                    anchor="nw",
+                    font=cell_font,
+                    text_color="#0F172A",
+                    fg_color="#FFFFFF",
+                    corner_radius=6,
+                    height=70,
+                    padx=8,
+                    pady=6,
+                )
+                cell.pack(fill="both", expand=True)
+                cell.configure(wraplength=200)
+                self.timetable_cells[(period, day)] = cell
+
+        for period in range(11):
+            self.timetable_grid_frame.grid_rowconfigure(period, weight=0)
+        self.timetable_grid_frame.grid_rowconfigure(11, weight=1)
+
+    def _stretch_timetable_grid(self, event):
+        if not self.timetable_canvas or not self.timetable_grid_window:
+            return
+        self.timetable_canvas.itemconfigure(self.timetable_grid_window, width=event.width)
+
+    def _build_assignment_section(self):
+        self.assignment_section.grid_rowconfigure(0, weight=1)
+        self.assignment_section.grid_columnconfigure(0, weight=1)
+
+        wrapper = ttk.Frame(self.assignment_section, style="App.TFrame")
         wrapper.grid(row=0, column=0, sticky="nsew")
-        wrapper.grid_columnconfigure(0, weight=2)
-        wrapper.grid_columnconfigure(1, weight=3)
+        # Chia 3 vùng: sinh viên (trái), nút hành động (giữa mỏng), LHP & TKB sinh viên (phải)
+        wrapper.grid_columnconfigure(0, weight=3)
+        wrapper.grid_columnconfigure(1, weight=4)
         wrapper.grid_rowconfigure(0, weight=1)
 
-        student_card = ttk.Frame(wrapper, style="Card.TFrame", padding=15)
-        student_card.grid(row=0, column=0, sticky="nsew", padx=(0, 12))
+        student_card = ttk.Frame(wrapper, style="Card.TFrame", padding=12)
+        student_card.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
         student_card.grid_columnconfigure(0, weight=1)
         student_card.grid_rowconfigure(3, weight=1)
 
@@ -418,7 +561,7 @@ class AdminScheduleManagementFrame(ttk.Frame):
             columns=student_columns,
             show="headings",
             selectmode="browse",
-            height=18,
+            height=14,
         )
         for col, text, width in [
             ("MaSV", "Mã SV", 90),
@@ -432,12 +575,18 @@ class AdminScheduleManagementFrame(ttk.Frame):
         student_scroll = ttk.Scrollbar(
             student_card, orient="vertical", command=self.student_tree.yview
         )
-        self.student_tree.configure(yscrollcommand=student_scroll.set)
+        student_scroll_x = ttk.Scrollbar(
+            student_card, orient="horizontal", command=self.student_tree.xview
+        )
+        self.student_tree.configure(
+            yscrollcommand=student_scroll.set, xscrollcommand=student_scroll_x.set
+        )
         self.student_tree.grid(row=3, column=0, sticky="nsew", pady=(8, 0))
         student_scroll.grid(row=3, column=1, sticky="ns", pady=(8, 0))
+        student_scroll_x.grid(row=4, column=0, sticky="ew", pady=(4, 0))
         self.student_tree.bind("<<TreeviewSelect>>", self.on_student_select)
 
-        assignment_card = ttk.Frame(wrapper, style="Card.TFrame", padding=15)
+        assignment_card = ttk.Frame(wrapper, style="Card.TFrame", padding=12)
         assignment_card.grid(row=0, column=1, sticky="nsew")
         assignment_card.grid_columnconfigure(0, weight=2)
         assignment_card.grid_columnconfigure(1, weight=0)
@@ -447,7 +596,7 @@ class AdminScheduleManagementFrame(ttk.Frame):
         lhp_section = ttk.Frame(assignment_card, style="App.TFrame")
         lhp_section.grid(row=0, column=0, sticky="nsew")
         lhp_section.grid_columnconfigure(0, weight=1)
-        lhp_section.grid_rowconfigure(2, weight=1)
+        lhp_section.grid_rowconfigure(3, weight=1)
 
         ttk.Label(lhp_section, text="Lớp học phần khả dụng", style="SectionTitle.TLabel").grid(
             row=0, column=0, sticky="w"
@@ -464,6 +613,12 @@ class AdminScheduleManagementFrame(ttk.Frame):
             style="Outline.TButton",
             command=lambda: self.assignment_lhp_search_var.set(""),
         ).grid(row=0, column=1, padx=(10, 0))
+
+        ttk.Label(
+            lhp_section,
+            textvariable=self.assignment_lhp_stats_var,
+            style="CardMuted.TLabel",
+        ).grid(row=2, column=0, sticky="w", pady=(0, 4))
 
         lhp_columns = ("MaLHP", "TenLHP", "TenMH", "HoTenGV", "HocKy", "NamHoc")
         self.assignment_lhp_tree = ttk.Treeview(
@@ -488,12 +643,18 @@ class AdminScheduleManagementFrame(ttk.Frame):
         lhp_scroll = ttk.Scrollbar(
             lhp_section, orient="vertical", command=self.assignment_lhp_tree.yview
         )
-        self.assignment_lhp_tree.configure(yscrollcommand=lhp_scroll.set)
-        self.assignment_lhp_tree.grid(row=2, column=0, sticky="nsew")
-        lhp_scroll.grid(row=2, column=1, sticky="ns")
+        lhp_scroll_x = ttk.Scrollbar(
+            lhp_section, orient="horizontal", command=self.assignment_lhp_tree.xview
+        )
+        self.assignment_lhp_tree.configure(
+            yscrollcommand=lhp_scroll.set, xscrollcommand=lhp_scroll_x.set
+        )
+        self.assignment_lhp_tree.grid(row=3, column=0, sticky="nsew")
+        lhp_scroll.grid(row=3, column=1, sticky="ns")
+        lhp_scroll_x.grid(row=4, column=0, sticky="ew", pady=(4, 0))
 
         action_frame = ttk.Frame(assignment_card, style="App.TFrame")
-        action_frame.grid(row=0, column=1, padx=12, sticky="ns")
+        action_frame.grid(row=0, column=1, padx=8, sticky="ns")
         ttk.Button(
             action_frame,
             text="Cấp >>",
@@ -515,9 +676,9 @@ class AdminScheduleManagementFrame(ttk.Frame):
         ttk.Label(assigned_section, text="Thời khóa biểu đã cấp", style="SectionTitle.TLabel").grid(
             row=0, column=0, sticky="w"
         )
-        ttk.Label(assigned_section, textvariable=self.assignment_status_var, style="CardMuted.TLabel").grid(
-            row=2, column=0, sticky="w", pady=(4, 0)
-        )
+        ttk.Label(
+            assigned_section, textvariable=self.assignment_status_var, style="CardMuted.TLabel"
+        ).grid(row=3, column=0, sticky="w", pady=(4, 0))
 
         enrollment_columns = ("MaLHP", "TenMH", "TenLHP", "HocKy", "NamHoc")
         self.student_assignment_tree = ttk.Treeview(
@@ -541,9 +702,15 @@ class AdminScheduleManagementFrame(ttk.Frame):
         enroll_scroll = ttk.Scrollbar(
             assigned_section, orient="vertical", command=self.student_assignment_tree.yview
         )
-        self.student_assignment_tree.configure(yscrollcommand=enroll_scroll.set)
+        enroll_scroll_x = ttk.Scrollbar(
+            assigned_section, orient="horizontal", command=self.student_assignment_tree.xview
+        )
+        self.student_assignment_tree.configure(
+            yscrollcommand=enroll_scroll.set, xscrollcommand=enroll_scroll_x.set
+        )
         self.student_assignment_tree.grid(row=1, column=0, sticky="nsew", pady=(6, 0))
         enroll_scroll.grid(row=1, column=1, sticky="ns", pady=(6, 0))
+        enroll_scroll_x.grid(row=2, column=0, sticky="ew", pady=(4, 0))
 
     # ------------------------------------------------------------------
     # DATA LOADING
@@ -637,7 +804,7 @@ class AdminScheduleManagementFrame(ttk.Frame):
             label = f"{lop[0].strip()} - {lop[1]}"
             class_options.append(label)
             self.class_label_to_id[label] = lop[0].strip()
-        self.combo_lop["values"] = class_options
+        self.combo_lop.configure(values=class_options)
         self.combo_lop.set(class_options[0])
 
         teacher_options = ["-- Không chọn --"]
@@ -646,7 +813,7 @@ class AdminScheduleManagementFrame(ttk.Frame):
             label = f"{gv[0].strip()} - {gv[1]}"
             teacher_options.append(label)
             self.teacher_label_to_id[label] = gv[0].strip()
-        self.combo_gv["values"] = teacher_options
+        self.combo_gv.configure(values=teacher_options)
         self.combo_gv.set(teacher_options[0])
 
     def load_assignment_sources(self):
@@ -694,8 +861,15 @@ class AdminScheduleManagementFrame(ttk.Frame):
             return
 
         keyword = (self.assignment_lhp_search_var.get() or "").strip().lower()
+        current_selection = self.assignment_lhp_tree.selection()
+        current_selection = current_selection[0] if current_selection else None
+
         for item in self.assignment_lhp_tree.get_children():
             self.assignment_lhp_tree.delete(item)
+
+        total = len(self.lhp_data)
+        visible = 0
+        matching_ids = set()
 
         for row in self.lhp_data:
             haystack = " ".join(
@@ -712,14 +886,29 @@ class AdminScheduleManagementFrame(ttk.Frame):
             if keyword and keyword not in haystack:
                 continue
             values = (
+                row.get("MaLHP", ""),
                 row.get("TenLHP", ""),
-                row.get("MaLHP"),
                 row.get("TenMH", ""),
                 row.get("HoTenGV", ""),
                 row.get("HocKy", ""),
                 row.get("NamHoc", ""),
             )
-            self.assignment_lhp_tree.insert("", "end", iid=str(row.get("MaLHP")), values=values)
+            iid = str(row.get("MaLHP"))
+            self.assignment_lhp_tree.insert("", "end", iid=iid, values=values)
+            matching_ids.add(iid)
+            visible += 1
+
+        if current_selection and current_selection in matching_ids:
+            self.assignment_lhp_tree.selection_set(current_selection)
+            self.assignment_lhp_tree.see(current_selection)
+
+        if total == 0:
+            self.assignment_lhp_stats_var.set("Không có lớp học phần khả dụng.")
+        else:
+            summary = f"Hiển thị {visible}/{total} lớp học phần"
+            if visible == 0:
+                summary += " - Không tìm thấy kết quả phù hợp"
+            self.assignment_lhp_stats_var.set(summary)
 
     def refresh_student_assignment_list(self):
         if not hasattr(self, "student_assignment_tree"):
@@ -912,21 +1101,25 @@ class AdminScheduleManagementFrame(ttk.Frame):
         else:
             messagebox.showerror("Không thể gỡ", message)
 
-    # Sidebar button helpers
+    # Navigation helpers
     def focus_lhp_list(self):
-        self.main_notebook.select(self.schedule_tab)
+        self._show_tab("schedule")
         self.lhp_tree.focus_set()
 
     def focus_schedule_form(self):
-        self.main_notebook.select(self.schedule_tab)
+        self._show_tab("schedule")
         self.entry_phong.focus_set()
 
+    def open_assignment_management(self):
+        self._show_tab("assignment")
+        self.student_tree.focus_set()
+
     def open_timetable_for_class(self):
-        self.main_notebook.select(self.timetable_tab)
+        self._show_tab("timetable")
         self.combo_lop.focus_set()
 
     def open_timetable_for_teacher(self):
-        self.main_notebook.select(self.timetable_tab)
+        self._show_tab("timetable")
         self.combo_gv.focus_set()
 
     # ------------------------------------------------------------------
@@ -970,13 +1163,10 @@ class AdminScheduleManagementFrame(ttk.Frame):
         self.render_timetable_grid(entries, f"Đang hiển thị cho: {context}")
 
     def clear_timetable_grid(self, message=""):
-        for item in self.timetable_tree.get_children():
-            self.timetable_tree.delete(item)
-        for period in range(1, 11):
-            values = [f"Tiết {period}"] + ["" for _ in range(6)]
-            self.timetable_tree.insert("", "end", values=values)
-        if message:
-            self.timetable_context_var.set(message)
+        for label in self.timetable_cells.values():
+            label.configure(text="")
+        notice = message or "Chưa có dữ liệu được hiển thị."
+        self.timetable_context_var.set(notice)
 
     def render_timetable_grid(self, entries, message):
         grid = {
@@ -1003,12 +1193,8 @@ class AdminScheduleManagementFrame(ttk.Frame):
                         else:
                             grid[slot][thu] = description
 
-        for item in self.timetable_tree.get_children():
-            self.timetable_tree.delete(item)
-
-        for period in range(1, 11):
-            row_values = [f"Tiết {period}"] + [grid[period].get(day, "") for day in range(2, 8)]
-            self.timetable_tree.insert("", "end", values=row_values)
+        for (period, day), label in self.timetable_cells.items():
+            label.configure(text=grid.get(period, {}).get(day, ""))
 
         context_text = message
         if collision_detected:
