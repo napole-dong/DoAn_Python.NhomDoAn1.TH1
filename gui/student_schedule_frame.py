@@ -1,5 +1,5 @@
 import tkinter as tk
-from datetime import datetime
+from datetime import datetime, date
 from tkinter import ttk
 
 
@@ -133,6 +133,14 @@ class StudentScheduleFrame(ttk.Frame):
             textvariable=self.empty_state_var,
             style="Muted.TLabel",
         )
+        self.empty_state_label.grid(
+            row=1,
+            column=0,
+            columnspan=2,
+            pady=20,
+            sticky="n",
+        )
+        self.empty_state_label.grid_remove()
 
     def _build_week_tab(self):
         self.week_tab.grid_rowconfigure(1, weight=1)
@@ -184,7 +192,13 @@ class StudentScheduleFrame(ttk.Frame):
         info = self.controller.db.get_student_info(self.student_id)
         if info:
             ho_ten = info[0]
-            dob = info[1].strftime("%d/%m/%Y") if info[1] else "N/A"
+            dob_value = info[1] if len(info) > 1 else None
+            if isinstance(dob_value, (datetime, date)):
+                dob = dob_value.strftime("%d/%m/%Y")
+            elif dob_value:
+                dob = str(dob_value)
+            else:
+                dob = "N/A"
             gender = info[2] if len(info) > 2 else ""
             meta_parts = [f"MSSV {self.student_id}", ho_ten]
             if gender:
@@ -211,7 +225,7 @@ class StudentScheduleFrame(ttk.Frame):
         self.schedule_data = normalized
 
         total_sessions = len(self.schedule_data)
-        total_days = len({item["Thu"] for item in self.schedule_data}) or 0
+        total_days = len({item.get("Thu") for item in self.schedule_data if item.get("Thu")}) or 0
         if total_sessions:
             self.summary_var.set(
                 f"{total_sessions} lịch học · diễn ra trong {total_days} ngày mỗi tuần"
@@ -233,11 +247,17 @@ class StudentScheduleFrame(ttk.Frame):
 
         filtered = []
         for item in self.schedule_data:
-            if day_number and item["Thu"] != day_number:
+            thu_value = item.get("Thu")
+            if day_number and thu_value != day_number:
                 continue
             if keyword:
                 haystack = " ".join(
-                    [item["TenMH"], item["TenLHP"], item["HoTenGV"], item["PhongHoc"]]
+                    [
+                        str(item.get("TenMH") or ""),
+                        str(item.get("TenLHP") or ""),
+                        str(item.get("HoTenGV") or ""),
+                        str(item.get("PhongHoc") or ""),
+                    ]
                 ).lower()
                 if keyword not in haystack:
                     continue
@@ -251,25 +271,34 @@ class StudentScheduleFrame(ttk.Frame):
             self.detail_tree.delete(item)
 
         for schedule in filtered:
-            thu_text = DAY_NAME_MAP.get(schedule["Thu"], f"Thứ {schedule['Thu']}")
-            start = schedule["TietBatDau"]
-            end = start + schedule["SoTiet"] - 1
-            tiet_text = f"Tiết {start} - {end}"
+            thu_value = schedule.get("Thu")
+            thu_text = DAY_NAME_MAP.get(thu_value, f"Thứ {thu_value}" if thu_value else "(Chưa rõ)")
+            start = schedule.get("TietBatDau")
+            duration = schedule.get("SoTiet")
+            if start is not None and duration:
+                end = start + duration - 1
+                tiet_text = f"Tiết {start} - {end}"
+            else:
+                tiet_text = "(Chưa cập nhật)"
+            course_name = schedule.get("TenMH") or "(Chưa cập nhật)"
+            class_name = schedule.get("TenLHP") or "(Chưa đặt)"
+            teacher_name = schedule.get("HoTenGV") or "(Đang phân công)"
+            room_name = schedule.get("PhongHoc") or "(Bổ sung sau)"
             self.detail_tree.insert(
                 "",
                 "end",
                 values=(
-                    schedule["TenMH"],
-                    schedule["TenLHP"],
-                    schedule["HoTenGV"],
+                    course_name,
+                    class_name,
+                    teacher_name,
                     thu_text,
                     tiet_text,
-                    schedule["PhongHoc"],
+                    room_name,
                 ),
             )
 
         if filtered:
-            self.empty_state_label.pack_forget()
+            self.empty_state_label.grid_remove()
             self.empty_state_var.set("")
         else:
             keyword = self.search_var.get().strip()
@@ -280,22 +309,29 @@ class StudentScheduleFrame(ttk.Frame):
             if day_label and day_label != "Tất cả các ngày":
                 reason += f" · bộ lọc ngày {day_label}"
             self.empty_state_var.set(reason)
-            self.empty_state_label.pack(pady=20)
+            self.empty_state_label.grid()
 
     def populate_week_view(self):
         grid = {period: {day: "" for day in range(2, 8)} for period in range(1, 11)}
         for item in self.schedule_data:
-            thu = item["Thu"]
-            start = item["TietBatDau"]
-            end = start + item["SoTiet"] - 1
+            thu = item.get("Thu")
+            start = item.get("TietBatDau")
+            duration = item.get("SoTiet")
+            if thu is None or start is None or duration is None:
+                continue
+            end = start + duration - 1
+            course_name = item.get("TenMH") or "Môn học"
+            class_name = item.get("TenLHP") or "LHP"
+            teacher_name = item.get("HoTenGV") or "GV"
+            room_name = item.get("PhongHoc") or "(Chưa cập nhật)"
             description = (
-                f"{item['TenMH']} ({item['TenLHP']})\n"
-                f"GV: {item['HoTenGV']}\n"
-                f"{item['PhongHoc']} · Tiết {start}-{end}"
+                f"{course_name} ({class_name})\n"
+                f"GV: {teacher_name}\n"
+                f"{room_name} · Tiết {start}-{end}"
             )
             if thu not in range(2, 8):
                 continue
-            for offset in range(item["SoTiet"]):
+            for offset in range(duration):
                 slot = start + offset
                 if 1 <= slot <= 10:
                     grid[slot][thu] = description

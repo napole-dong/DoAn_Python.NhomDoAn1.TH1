@@ -146,7 +146,7 @@ class MainApplication(tk.Tk):
             student_id = args[0]
             frame.load_data(student_id)
 
-        # --- Các frame Admin (Phần này bị thiếu trong file của bạn) ---
+        # --- Các frame Admin 
         elif frame_name == "AdminStudentManagementFrame":
             self.title("Quản lý Sinh viên")
             self.geometry("1100x700")  # Kích thước lớn
