@@ -626,6 +626,104 @@ class Database:
     # --- CÁC HÀM CHO ADMIN - SẮP XẾP THỜI KHÓA BIỂU ---
     # ===================================================================
 
+    def get_students_for_schedule_assignment(self):
+        """(Admin) Lấy danh sách SV để cấp thời khóa biểu."""
+        if not self.connection:
+            return []
+        sql = """
+            SELECT sv.MaSV, sv.HoTen, sv.MaLop, l.TenLop
+            FROM SinhVien AS sv
+            JOIN Lop AS l ON sv.MaLop = l.MaLop
+            ORDER BY l.TenLop, sv.HoTen
+        """
+        cursor = self.connection.cursor()
+        try:
+            cursor.execute(sql)
+            rows = cursor.fetchall()
+            columns = ["MaSV", "HoTen", "MaLop", "TenLop"]
+            return [dict(zip(columns, row)) for row in rows]
+        except pyodbc.Error as ex:
+            messagebox.showerror(
+                "Lỗi Truy Vấn",
+                f"Không thể lấy danh sách sinh viên cho chức năng cấp thời khóa biểu: {ex}",
+            )
+            return []
+        finally:
+            cursor.close()
+
+    def get_student_enrollments(self, ma_sv):
+        """(Admin) Lấy danh sách LHP mà SV đã được cấp."""
+        if not self.connection:
+            return []
+        sql = """
+            SELECT dkh.MaLHP, mh.TenMH, lhp.TenLHP, lhp.HocKy, lhp.NamHoc
+            FROM DangKyHoc AS dkh
+            JOIN LopHocPhan AS lhp ON dkh.MaLHP = lhp.MaLHP
+            JOIN MonHoc AS mh ON lhp.MaMH = mh.MaMH
+            WHERE dkh.MaSV = ?
+            ORDER BY lhp.NamHoc DESC, lhp.HocKy, mh.TenMH
+        """
+        cursor = self.connection.cursor()
+        try:
+            cursor.execute(sql, (ma_sv,))
+            rows = cursor.fetchall()
+            columns = ["MaLHP", "TenMH", "TenLHP", "HocKy", "NamHoc"]
+            return [dict(zip(columns, row)) for row in rows]
+        except pyodbc.Error as ex:
+            messagebox.showerror(
+                "Lỗi Truy Vấn",
+                f"Không thể lấy danh sách lớp học phần của sinh viên {ma_sv}: {ex}",
+            )
+            return []
+        finally:
+            cursor.close()
+
+    def assign_student_to_lhp(self, ma_sv, ma_lhp):
+        """(Admin) Gán một LHP vào thời khóa biểu của SV."""
+        if not self.connection:
+            return False, "Mất kết nối CSDL."
+
+        conflict_message = self._check_student_assignment_conflicts(ma_sv, ma_lhp)
+        if conflict_message:
+            return False, conflict_message
+
+        sql = "INSERT INTO DangKyHoc (MaSV, MaLHP) VALUES (?, ?)"
+        cursor = self.connection.cursor()
+        try:
+            cursor.execute(sql, (ma_sv, ma_lhp))
+            self.connection.commit()
+            return True, "Đã cấp thời khóa biểu cho sinh viên."
+        except pyodbc.IntegrityError as ex:
+            self.connection.rollback()
+            err_text = str(ex)
+            if "PRIMARY KEY" in err_text:
+                return False, "Sinh viên đã học lớp học phần này."
+            return False, f"Không thể cấp thời khóa biểu: {ex}"
+        except pyodbc.Error as ex:
+            self.connection.rollback()
+            return False, f"Không thể cấp thời khóa biểu: {ex}"
+        finally:
+            cursor.close()
+
+    def remove_student_from_lhp(self, ma_sv, ma_lhp):
+        """(Admin) Gỡ một LHP khỏi thời khóa biểu SV."""
+        if not self.connection:
+            return False, "Mất kết nối CSDL."
+
+        sql = "DELETE FROM DangKyHoc WHERE MaSV = ? AND MaLHP = ?"
+        cursor = self.connection.cursor()
+        try:
+            cursor.execute(sql, (ma_sv, ma_lhp))
+            if cursor.rowcount == 0:
+                return False, "Không tìm thấy bản ghi phù hợp để gỡ."
+            self.connection.commit()
+            return True, "Đã gỡ lớp học phần khỏi thời khóa biểu sinh viên."
+        except pyodbc.Error as ex:
+            self.connection.rollback()
+            return False, f"Không thể gỡ lớp học phần: {ex}"
+        finally:
+            cursor.close()
+
     def get_lophocphan_for_schedule(self):
         """(Admin) Lấy danh sách LHP kèm thông tin phục vụ sắp lịch."""
         if not self.connection:
@@ -660,6 +758,32 @@ class Database:
                 f"Không thể lấy danh sách Lớp học phần cho chức năng sắp lịch: {ex}",
             )
             return []
+        finally:
+            cursor.close()
+
+    def _check_student_assignment_conflicts(self, ma_sv, ma_lhp):
+        """Kiểm tra trùng lịch giữa LHP mới và lịch hiện tại của SV."""
+        if not self.connection:
+            return "Mất kết nối CSDL."
+
+        sql = """
+            SELECT COUNT(1)
+            FROM DangKyHoc AS dk
+            JOIN LichHoc AS lh_existing ON dk.MaLHP = lh_existing.MaLHP
+            JOIN LichHoc AS lh_new ON lh_new.MaLHP = ?
+            WHERE dk.MaSV = ?
+              AND lh_existing.Thu = lh_new.Thu
+              AND NOT ((lh_existing.TietBatDau + lh_existing.SoTiet) <= lh_new.TietBatDau
+                       OR (lh_new.TietBatDau + lh_new.SoTiet) <= lh_existing.TietBatDau)
+        """
+        cursor = self.connection.cursor()
+        try:
+            cursor.execute(sql, (ma_lhp, ma_sv))
+            if cursor.fetchone()[0] > 0:
+                return "Lớp học phần này trùng lịch với môn khác của sinh viên."
+            return None
+        except pyodbc.Error as ex:
+            return f"Lỗi kiểm tra trùng lịch sinh viên: {ex}"
         finally:
             cursor.close()
 
