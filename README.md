@@ -19,15 +19,16 @@ DoAn_Python.NhomDoAn1.TH1/
 └─ README.md
 ```
 
-## Yeu cau moi truong
-- Python 3.10 tro len (chuong trinh da kiem tra voi Windows).
-- Thu vien `pyodbc` va Tkinter (mac dinh tren Windows Python).
-- SQL Server Express/LocalDB + `ODBC Driver 17 for SQL Server` da cai san.
+## Yeu cau cai dat
+- **Python & pip**: Can Python 3.10 tro len (da kiem thu tren Windows 10/11). Nen tao virtualenv rieng de tranh xung dot thu vien.
+- **Thu vien Python**: Tat ca nam trong `requirements.txt` (`pyodbc` cho SQL Server, `customtkinter` cho UI). Cai bang lenh ben duoi sau khi cd vao thu muc du an:
 
-Cai thu vien Python:
 ```bash
-pip install pyodbc
+pip install -r requirements.txt
 ```
+
+- **SQL Server + driver**: Can mot instance SQL Server Express/LocalDB (hoac server tu xa) va `ODBC Driver 17 for SQL Server`. Dung script `QuanLiSinhVien_sql.sql` de tao DB va du lieu mau.
+- **Chuoi ket noi**: Neu server khac `dyspi\SQLEXPRESS`, sua bien `conn_string` trong `database.py` cho phu hop (co the doi ten server, hinh thuc auth, hoac DangNhap/MK).
 
 ## Cai dat CSDL
 1. Mo SQL Server Management Studio (hoac sqlcmd) ket noi toi instance (mac dinh trong ma nguon: `dyspi\SQLEXPRESS`).
