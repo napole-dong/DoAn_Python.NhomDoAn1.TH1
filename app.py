@@ -5,7 +5,6 @@ from tkinter import ttk, messagebox
 from database import Database
 
 # Import tất cả các Frame giao diện từ thư mục 'gui'
-# ĐẢM BẢO BẠN ĐANG IMPORT ĐÚNG FILE ĐÃ SỬA (.strip())
 # from gui.login_frame import LoginFrame # <- Đảm bảo file này là file đã sửa
 from gui.login_frame import LoginFrame  # <- Tạm thời đổi tên import để chắc chắn
 
